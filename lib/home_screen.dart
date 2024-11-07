@@ -13,17 +13,29 @@ import 'dart:math' show pi;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:io' show Platform;
 import 'ad_manager.dart';
+import 'timer.dart';
+import 'home_screen.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
 
+  // Initialize timezone using built-in functionality
+  tz.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation('Asia/Seoul')); // Set to Seoul timezone directly
+
+  // Initialize notifications
   final notificationService = NotificationService();
   await notificationService.init();
   await notificationService.requestPermissions();
 
+  // Initialize ads
+  await MobileAds.instance.initialize();
+
   runApp(HomeScreen());
 }
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -32,13 +44,11 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
   FlutterLocalNotificationsPlugin();
 
-  // 채널 ID와 이름을 상수로 정의
   static const String channelId = 'subway_notification';
   static const String channelName = '지하철 알림';
   static const String channelDescription = '지하철 도착 정보 알림';
 
   Future<void> init() async {
-    // 안드로이드 초기화 설정
     const AndroidInitializationSettings initializationSettingsAndroid =
     AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -121,16 +131,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _isDarkMode = widget.isDarkMode;
     _isSystemMode = false;
     _loadPreferences();
-    /* 광고 AdManager().getBannerAdWidget() ?? Container(),  AdManager _setupBannerAd();*/
+    // Initialize ads
+    AdManager().getBannerAdWidget();
+    _setupBannerAd();
   }
-  /* void _setupBannerAd() {
+
+  void _setupBannerAd() {
     _bannerAd = AdManager().createBannerAd();
     _bannerAd?.load().then((value) {
       setState(() {
         _isAdLoaded = true;
       });
     });
-  }*/
+  }
 
   @override
   void dispose() {
@@ -144,14 +157,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isSystemMode) {
       _updateThemeMode();
     }
+    super.didChangePlatformBrightness();
   }
 
 
   void _updateThemeMode() {
     if (_isSystemMode) {
       final window = View.of(context).platformDispatcher;
+      final isDarkMode = window.platformBrightness == Brightness.dark;
       setState(() {
-        _isDarkMode = window.platformBrightness == Brightness.dark;
+        _isDarkMode = isDarkMode;
       });
       widget.toggleDarkMode?.call(_isDarkMode);
     }
@@ -164,25 +179,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_isSystemMode) {
         final window = View.of(context).platformDispatcher;
         _isDarkMode = window.platformBrightness == Brightness.dark;
-        widget.toggleDarkMode?.call(_isDarkMode);
       } else {
         _isDarkMode = prefs.getBool('isDarkMode') ?? false;
       }
+      widget.toggleDarkMode?.call(_isDarkMode);
     });
   }
 
-
-  void _toggleDarkMode(bool value) async {
+  Future<void> _toggleDarkMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
       _isDarkMode = value;
+      _isSystemMode = false;
+    });
+    widget.toggleDarkMode?.call(_isDarkMode);
+    await prefs.setBool('isSystemMode', false);
+    await prefs.setBool('isDarkMode', value);
+  }
+
+  Future<void> setSystemMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isSystemMode = value;
       if (value) {
-        _isSystemMode = false;
+        final window = View.of(context).platformDispatcher;
+        _isDarkMode = window.platformBrightness == Brightness.dark;
       }
     });
     widget.toggleDarkMode?.call(_isDarkMode);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isSystemMode', false);
-    await prefs.setBool('isDarkMode', value);
+    await prefs.setBool('isSystemMode', value);
   }
 
 
@@ -223,13 +248,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 isDarkMode: _isDarkMode,
               ),
             ),
-            if (_isAdLoaded && _bannerAd != null)
-              Container(
-                alignment: Alignment.center,
-                width: _bannerAd!.size.width.toDouble(),
-                height: _bannerAd!.size.height.toDouble(),
-                child: AdWidget(ad: _bannerAd!),
-              ),
           ],
         ),
       ),
@@ -237,11 +255,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
+
+
 class CombinedScreen extends StatefulWidget {
   final Function(bool) toggleDarkMode;
   final bool isDarkMode;
 
-  CombinedScreen({required this.toggleDarkMode, required this.isDarkMode});
+  CombinedScreen({
+    required this.toggleDarkMode,
+    required this.isDarkMode,
+  });
 
   @override
   _CombinedScreenState createState() => _CombinedScreenState();
@@ -370,7 +393,7 @@ class _CombinedScreenState extends State<CombinedScreen> {
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                children:[
                   Icon(
                     Icons.add,
                     color: Colors.grey[600],
@@ -723,7 +746,7 @@ class _CombinedScreenState extends State<CombinedScreen> {
               ),
             ),
             Text(
-              '지어디?',
+              'G-Haro',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 19, fontWeight: FontWeight.bold),
             )
           ],
@@ -761,6 +784,19 @@ class _CombinedScreenState extends State<CombinedScreen> {
                 );
               },
             ),
+            ListTile(
+              title: Text('알림'),
+              leading: Icon(Icons.notifications),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TimerScreen(),  // const 키워드 제거
+                  ),
+                );
+              },
+            ),
+
           ],
         ),
       ),
@@ -898,7 +934,6 @@ class _CombinedScreenState extends State<CombinedScreen> {
               ),
             ),
           ),
-
           // 최근기록 섹션
           Padding(
             padding: const EdgeInsets.only(left: 15.0, top: 15.0, bottom: 5.0),
@@ -913,7 +948,7 @@ class _CombinedScreenState extends State<CombinedScreen> {
           ),
           Container(
             margin: EdgeInsets.symmetric(vertical: 0, horizontal: 12.0),
-            height: 400, // 화면 높이의 50%로 고정
+            height: 580,
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.white,
               borderRadius: BorderRadius.circular(10),
@@ -931,7 +966,6 @@ class _CombinedScreenState extends State<CombinedScreen> {
               ],
             ),
             child: ListView.builder(
-              // shrinkWrap과 NeverScrollableScrollPhysics 제거
               padding: const EdgeInsets.only(top: 15.0),
               itemCount: searchHistory.length,
               itemBuilder: (context, index) {
@@ -996,9 +1030,10 @@ class _CombinedScreenState extends State<CombinedScreen> {
               },
             ),
           ),
-          /* Container(
+          Container(
+            margin: EdgeInsets.only(left: 0,top: 15,right: 0,bottom: 0),
             child: AdManager().getBannerAdWidget() ?? Container(),
-          ),*/
+          ),
         ],
       ),
     );
@@ -1057,6 +1092,8 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
   }
 
   Future<void> fetchStationArrivalInfo() async {
+    if (!mounted) return;
+
     String apiKey = '6f77695050636e64333568746d5370';
     String url = 'http://swopenAPI.seoul.go.kr/api/subway/$apiKey/json/realtimeStationArrival/0/10/${widget.stationName}';
 
@@ -1071,46 +1108,35 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
           List<Map<String, dynamic>> newArrivalInfo = [];
           List<dynamic> arrivals = data['realtimeArrivalList'];
 
-          // 현재 선택된 호선의 도착 정보만 필터링
           final currentSubwayId = _getSubwayId(currentLine);
-
           arrivals = arrivals.where((arrival) {
             String subwayId = arrival['subwayId'] ?? '';
-
-            // currentLine과 subwayId가 일치하는 정보만 선택
             return subwayId == currentSubwayId;
           }).toList();
 
-
-          DateTime now = DateTime.now();
-
           for (var arrival in arrivals) {
-            String recptnDt = arrival['recptnDt'] ?? '';
+            String barvlDt = arrival['barvlDt'] ?? '';
             String timeUntilArrival = '정보 없음';
 
-            if (recptnDt.isNotEmpty) {
+            if (barvlDt.isNotEmpty) {
               try {
-                DateTime arrivalTime = DateTime.parse(recptnDt);
-                Duration difference = arrivalTime.difference(now);
-                int minutes = difference.inMinutes.abs();
-
-                if (minutes == 0) {
-                  timeUntilArrival = '곧 도착';
-                } else {
-                  timeUntilArrival = '$minutes분 후 도착';
-                }
+                int minutes = int.parse(barvlDt);
+                timeUntilArrival = minutes == 0 ? '곧 도착' : '$barvlDt초 후 도착';
               } catch (e) {
-                print('Error parsing date: $e');
+                print('Error parsing barvlDt: $e');
                 timeUntilArrival = '시간 정보 오류';
               }
             }
 
-            newArrivalInfo.add({
-              'trainLineNm': arrival['trainLineNm'] ?? '',
-              'btrainNo': arrival['btrainNo'] ?? '',
-              'updnLine': arrival['updnLine'] ?? '',
-              'barvlDt': timeUntilArrival,
+            var arrivalData = Map<String, String>.from({
+              "arvlMsg3": arrival['arvlMsg3'] ?? '',
+              "btrainNo": arrival['btrainNo'] ?? '',
+              "updnLine": arrival['updnLine'] ?? '',
+              "btrainSttus": arrival['btrainSttus'] ?? '',
+              "barvlDt": timeUntilArrival
             });
+
+            newArrivalInfo.add(arrivalData);
           }
 
           if (mounted) {
@@ -1136,16 +1162,28 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
     });
 
     try {
-      // 전체 데이터 로드
       String jsonString = await rootBundle.loadString('assets/seoul_subway.json');
       final jsonResponse = json.decode(jsonString);
 
       if (jsonResponse['DATA'] != null) {
         allStations = jsonResponse['DATA'];
-        // 현재 노선의 역들만 필터링
+
+        // 현재 노선의 역들만 필터링하고 station_cd로 정렬
         List<dynamic> currentLineStations = allStations
             .where((station) => station['line_num'] == currentLine)
-            .toList();
+            .toList()
+          ..sort((a, b) {
+            String cdA = a['station_cd'] ?? '';
+            String cdB = b['station_cd'] ?? '';
+
+            if (cdA.isEmpty) return 1;
+            if (cdB.isEmpty) return -1;
+
+            // 숫자로 변환하여 비교
+            int numA = int.tryParse(cdA) ?? 0;
+            int numB = int.tryParse(cdB) ?? 0;
+            return numA.compareTo(numB);
+          });
 
         // 현재 역의 인덱스 찾기
         selectedIndex = currentLineStations.indexWhere(
@@ -1154,13 +1192,14 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
 
         if (selectedIndex == -1) selectedIndex = 0;
 
-        // PageController를 먼저 초기화
+        // PageController 초기화
         _pageController = PageController(
           initialPage: selectedIndex,
           viewportFraction: 0.3,
         );
 
         setState(() {
+          allStations = jsonResponse['DATA'];
           isLoading = false;
         });
 
@@ -1175,7 +1214,6 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
         }
       }
 
-      // API 호출은 데이터 로드 후에 실행
       await fetchStationInfo();
       await fetchStationArrivalInfo();
 
@@ -1194,21 +1232,30 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
       currentLine = newLine;
       isLoading = true;
       trainInfoList = [];
+      arrivalInfo = []; // 도착 정보 초기화
     });
 
-    // 새로운 호선의 역 목록 필터링
     List<dynamic> newLineStations = allStations
         .where((station) => station['line_num'] == newLine)
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        String cdA = a['station_cd'] ?? '';
+        String cdB = b['station_cd'] ?? '';
 
-    // 현재 역의 새로운 인덱스 찾기
+        if (cdA.isEmpty) return 1;
+        if (cdB.isEmpty) return -1;
+
+        int numA = int.tryParse(cdA) ?? 0;
+        int numB = int.tryParse(cdB) ?? 0;
+        return numA.compareTo(numB);
+      });
+
     int newIndex = newLineStations.indexWhere(
             (station) => station['station_nm'] == widget.stationName
     );
 
     if (newIndex == -1) newIndex = 0;
 
-    // PageController 재설정
     _pageController.dispose();
     _pageController = PageController(
       initialPage: newIndex,
@@ -1216,7 +1263,10 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
     );
 
     // 새로운 데이터 로드
-    await fetchStationInfo();
+    await Future.wait([
+      fetchStationInfo(),
+      fetchStationArrivalInfo(), // 실시간 도착 정보도 함께 업데이트
+    ]);
 
     setState(() {
       selectedIndex = newIndex;
@@ -1241,6 +1291,7 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
     _timer = Timer.periodic(Duration(seconds: 30), (timer) {
       if (mounted) {
         fetchStationInfo();
+        fetchStationArrivalInfo(); // 주기적인 업데이트에도 도착 정보 포함
       }
     });
   }
@@ -1366,27 +1417,41 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
       selectedTrain = trainInfoList.firstWhere((train) => train['trainNo'] == trainNo);
     });
 
-    // 선택된 열차의 현재 역 찾기
-    final selectedTrainStation = selectedTrain?['statnNm'] ?? '';
+    if (selectedTrain != null) {
+      // 현재 노선의 역들만 필터링하고 정렬
+      List<dynamic> currentLineStations = allStations
+          .where((station) => station['line_num'] == currentLine)
+          .toList();
 
-    // 현재 호선의 역 목록에서 해당 역의 인덱스 찾기
-    List<dynamic> currentStations = allStations
-        .where((station) => station['line_num'] == currentLine)
-        .toList();
+      // station_cd로 정렬
+      currentLineStations.sort((a, b) {
+        String cdA = a['station_cd'] ?? '';
+        String cdB = b['station_cd'] ?? '';
 
-    final stationIndex = currentStations.indexWhere(
-            (station) => station['station_nm'] == selectedTrainStation
-    );
+        if (cdA.isEmpty) return 1;
+        if (cdB.isEmpty) return -1;
 
-    if (stationIndex != -1) {
-      // 해당 역으로 스크롤
-      _pageController.animateToPage(
-        stationIndex,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        int numA = int.tryParse(cdA) ?? 0;
+        int numB = int.tryParse(cdB) ?? 0;
+        return numA.compareTo(numB);
+      });
+
+      final String selectedTrainStation = selectedTrain!['statnNm'];
+
+      final stationIndex = currentLineStations.indexWhere(
+              (station) => station['station_nm'] == selectedTrainStation
       );
+
+      if (stationIndex != -1 && mounted) {
+        _pageController.animateToPage(
+          stationIndex,
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
+
   String _getTrainStatus(String? status) {
     switch (status) {
       case '0':
@@ -1423,9 +1488,23 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
   }
 
   Widget _buildStationView(BuildContext context, int index) {
+    // 현재 노선의 역들만 필터링하고 station_cd로 정렬
     List<dynamic> currentStations = allStations
         .where((station) => station['line_num'] == currentLine)
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        String cdA = a['station_cd'] ?? '';
+        String cdB = b['station_cd'] ?? '';
+
+        // station_cd가 비어있는 경우 처리
+        if (cdA.isEmpty) return 1;
+        if (cdB.isEmpty) return -1;
+
+        // 숫자로 변환하여 비교
+        int numA = int.tryParse(cdA) ?? 0;
+        int numB = int.tryParse(cdB) ?? 0;
+        return numA.compareTo(numB);
+      });
 
     final station = currentStations[index];
     final stationName = station['station_nm'];
@@ -1453,15 +1532,15 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
                 painter: LinePainter(
                   isLeftStation: index > 0,
                   isRightStation: index < currentStations.length - 1,
-                  lineColor: _getLineColor(currentLine),  // currentLine 사용
+                  lineColor: _getLineColor(currentLine),
                 ),
               ),
               StationMarker(
                 stationName: stationName,
                 isSelected: stationName == widget.stationName,
                 trainInfoList: trainInfoList,
-                stations: currentStations,  // currentStations 사용
-                lineColor: _getLineColor(currentLine),  // currentLine 사용
+                stations: currentStations,
+                lineColor: _getLineColor(currentLine),
               ),
               if (upwardTrain.isNotEmpty)
                 _buildTrainIcon(upwardTrain, true),
@@ -1473,6 +1552,7 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
       ],
     );
   }
+
 
   Widget _buildTrainIcon(Map<String, dynamic> train, bool isUpward) {
     final isExpress = train['directAt'] == '1' || train['directAt'] == '7';
@@ -1789,6 +1869,11 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
               ),
             ),
           ),
+          Container(
+            margin: EdgeInsets.all(10),
+            alignment: Alignment.center,
+            child: AdManager().getBannerAdWidget() ?? Container(),
+          ),
         ],
       ),
     );
@@ -1801,16 +1886,21 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
       return isUpward ? isUp : !isUp;
     }).take(2).toList();
 
+
     if (filteredInfo.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            '도착 예정인 열차가 없습니다.',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 16,
-            ),
+      return Container(
+        alignment: Alignment.center,  // 컨테이너 내부 중앙 정렬
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: Text(
+          '도착 예정인 열차가 없습니다.',
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
           ),
         ),
       );
@@ -1845,7 +1935,12 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
                   color: Colors.orange[50],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.train, color: Colors.orange[700]),
+                child: Icon(
+                  Icons.train,
+                  color: info['btrainSttus'].toString().contains('급행')
+                      ? Colors.red
+                      : _getLineColor(currentLine),  // Changed from lineNum to currentLine
+                ),
               ),
               SizedBox(width: 12),
               Expanded(
@@ -1853,7 +1948,7 @@ class _StationInfoScreenState extends State<StationInfoScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${info['trainLineNm']}',
+                      '${info['arvlMsg3']} [${info['btrainSttus']}]',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -2318,10 +2413,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _isDarkMode = widget.isDarkMode;
-    _isSystemMode = true;
     _loadSystemModePreference();
   }
-
 
   Future<void> _loadSystemModePreference() async {
     final prefs = await SharedPreferences.getInstance();
@@ -2331,31 +2424,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _toggleDarkMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      if (value) {
-        _isDarkMode = true;
-        _isSystemMode = false;
-      } else {
-        _isDarkMode = false;
-      }
+      _isDarkMode = value;
+      _isSystemMode = false;
     });
     widget.toggleDarkMode(_isDarkMode);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isSystemMode', _isSystemMode);
+    await prefs.setBool('isSystemMode', false);
+    await prefs.setBool('isDarkMode', value);
   }
 
   void _toggleSystemMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
+      _isSystemMode = value;
       if (value) {
-        _isSystemMode = true;
-        _isDarkMode = false;
-      } else {
-        _isSystemMode = false;
+        final window = View.of(context).platformDispatcher;
+        _isDarkMode = window.platformBrightness == Brightness.dark;
       }
     });
     widget.toggleDarkMode(_isDarkMode);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isSystemMode', _isSystemMode);
+    await prefs.setBool('isSystemMode', value);
   }
 
   Future<void> _openKakaoChannel(BuildContext context) async {
@@ -2439,16 +2528,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _isDarkMode,
             onChanged: _isSystemMode ? null : _toggleDarkMode,
             activeColor: Colors.blue,
-          ),
-          ListTile(
-            title: Text('테스트 알림 보내기', style: TextStyle(color: textColor)),
-            leading: Icon(Icons.notifications, color: textColor),
-            onTap: () async {
-              await NotificationService().showTestNotification();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('테스트 알림을 보냈습니다!')),
-              );
-            },
           ),
         ],
       ),
