@@ -226,25 +226,14 @@ class TimerScreenState extends State<TimerScreen> {
             String updnLine = arrival['updnLine'] ?? '';
             String barvlDt = arrival['barvlDt'] ?? '';
             String trainNo = arrival['btrainNo'] ?? ''; // 열차번호
-
-            // 도착 예정 시간 계산
-            String timeUntilArrival = '';
-            if (barvlDt.isNotEmpty) {
-              try {
-                int seconds = int.parse(barvlDt);
-                int minutes = (seconds / 60).floor();
-                timeUntilArrival = minutes == 0 ? '곧 도착' : '$minutes초 후';
-              } catch (e) {
-                timeUntilArrival = '시간 정보 없음';
-              }
-            }
+            String arvlMsg2 = arrival['arvlMsg2'] ?? ''; // 도착 메시지
 
             // 방향별로 첫 도착 열차만 저장
             String direction = updnLine.contains('상행') ? '상행' : '하행';
             if (!firstArrivals.containsKey(direction)) {
               firstArrivals[direction] = {
                 'trainNo': trainNo,
-                'time': timeUntilArrival,
+                'time': arvlMsg2,
               };
             }
           }
@@ -253,15 +242,19 @@ class TimerScreenState extends State<TimerScreen> {
           List<String> messages = [];
           if (firstArrivals.containsKey('상행')) {
             var info = firstArrivals['상행']!;
-            messages.add('상행 ${info['trainNo']} 열차 ${info['time']} 도착예정');
+            messages.add('상행 ${info['trainNo']} 열차\n${info['time']}');
           }
           if (firstArrivals.containsKey('하행')) {
             var info = firstArrivals['하행']!;
-            messages.add('하행 ${info['trainNo']} 열차 ${info['time']} 도착예정');
+            messages.add('하행 ${info['trainNo']} 열차\n${info['time']}');
           }
+
+          // 최종 메시지 반환
+          return messages.isEmpty ? '도착 예정 열차가 없습니다.' : messages.join('\n\n');
         }
+        return '도착 정보가 없습니다.';
       }
-      return '도착 정보를 불러올 수 없습니다.';
+      return '도착 정보를 불러올 수 없습니다. (상태 코드: ${response.statusCode})';
     } catch (e) {
       print('도착 정보 조회 오류: $e');
       return '도착 정보 조회 중 오류가 발생했습니다.';
