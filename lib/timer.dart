@@ -219,54 +219,46 @@ class TimerScreenState extends State<TimerScreen> {
         if (data.containsKey('realtimeArrivalList')) {
           List<dynamic> arrivals = data['realtimeArrivalList'];
 
-          // 상행과 하행 정보를 저장할 변수
-          Map<String, String> upTrainInfo = {};
-          Map<String, String> downTrainInfo = {};
+          // 상행과 하행 중 가장 빨리 도착하는 열차 정보를 저장할 변수
+          Map<String, Map<String, String>> firstArrivals = {};
 
           for (var arrival in arrivals) {
             String updnLine = arrival['updnLine'] ?? '';
             String barvlDt = arrival['barvlDt'] ?? '';
-            String timeUntilArrival = '';
+            String trainNo = arrival['btrainNo'] ?? ''; // 열차번호
 
+            // 도착 예정 시간 계산
+            String timeUntilArrival = '';
             if (barvlDt.isNotEmpty) {
               try {
                 int seconds = int.parse(barvlDt);
                 int minutes = (seconds / 60).floor();
-                timeUntilArrival = minutes == 0 ? '곧 도착' : '$minutes분 후 도착';
+                timeUntilArrival = minutes == 0 ? '곧 도착' : '$minutes초 후';
               } catch (e) {
                 timeUntilArrival = '시간 정보 없음';
               }
             }
 
-            // 상행/하행 정보 저장
-            if (updnLine.contains('상행') && upTrainInfo.isEmpty) {
-              upTrainInfo = {
-                'direction': arrival['trainLineNm'] ?? '',
+            // 방향별로 첫 도착 열차만 저장
+            String direction = updnLine.contains('상행') ? '상행' : '하행';
+            if (!firstArrivals.containsKey(direction)) {
+              firstArrivals[direction] = {
+                'trainNo': trainNo,
                 'time': timeUntilArrival,
               };
-            } else if (updnLine.contains('하행') && downTrainInfo.isEmpty) {
-              downTrainInfo = {
-                'direction': arrival['trainLineNm'] ?? '',
-                'time': timeUntilArrival,
-              };
-            }
-
-            // 상행과 하행 모두 찾았다면 반복 중단
-            if (upTrainInfo.isNotEmpty && downTrainInfo.isNotEmpty) {
-              break;
             }
           }
 
-          // 알림 메시지 생성
+          // 메시지 생성
           List<String> messages = [];
-          if (upTrainInfo.isNotEmpty) {
-            messages.add('상행(${upTrainInfo['direction']}): ${upTrainInfo['time']}');
+          if (firstArrivals.containsKey('상행')) {
+            var info = firstArrivals['상행']!;
+            messages.add('상행 ${info['trainNo']} 열차 ${info['time']} 도착예정');
           }
-          if (downTrainInfo.isNotEmpty) {
-            messages.add('하행(${downTrainInfo['direction']}): ${downTrainInfo['time']}');
+          if (firstArrivals.containsKey('하행')) {
+            var info = firstArrivals['하행']!;
+            messages.add('하행 ${info['trainNo']} 열차 ${info['time']} 도착예정');
           }
-
-          return messages.isEmpty ? '도착 정보가 없습니다.' : messages.join('\n');
         }
       }
       return '도착 정보를 불러올 수 없습니다.';
@@ -275,7 +267,6 @@ class TimerScreenState extends State<TimerScreen> {
       return '도착 정보 조회 중 오류가 발생했습니다.';
     }
   }
-
 
   @override
   void initState() {
@@ -438,6 +429,9 @@ class TimerScreenState extends State<TimerScreen> {
         if (alarm.days[i]) {
           final nextAlarmTime = _nextInstanceOfDayTime(alarm.time, i);
 
+          // 도착 정보 가져오기
+          final arrivalInfo = await _fetchArrivalInfo(alarm.stationName);
+
           final androidDetails = AndroidNotificationDetails(
             'alarm_channel_id',
             '지하철 알림',
@@ -452,12 +446,13 @@ class TimerScreenState extends State<TimerScreen> {
             autoCancel: true,
             ongoing: false,
             playSound: true,
+            styleInformation: BigTextStyleInformation(arrivalInfo), // 큰 텍스트 스타일 적용
           );
 
           await flutterLocalNotificationsPlugin.zonedSchedule(
             alarm.id + (i * 1000),
-            '지하철 도착 알림',
-            '${alarm.stationName}역 도착 시간입니다.',
+            '실시간 지하철 도착 알림',
+            arrivalInfo,
             nextAlarmTime,
             NotificationDetails(android: androidDetails),
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -476,7 +471,6 @@ class TimerScreenState extends State<TimerScreen> {
       }
     }
   }
-
   tz.TZDateTime _nextInstanceOfDayTime(TimeOfDay timeOfDay, int targetDay) {
     final now = tz.TZDateTime.now(tz.local);
 
