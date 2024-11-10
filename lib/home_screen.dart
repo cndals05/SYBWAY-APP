@@ -25,10 +25,6 @@ void main() async {
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Seoul')); // Set to Seoul timezone directly
 
-  // Initialize notifications
-  final notificationService = NotificationService();
-  await notificationService.init();
-  await notificationService.requestPermissions();
 
   // Initialize ads
   await MobileAds.instance.initialize();
@@ -36,78 +32,7 @@ void main() async {
   runApp(HomeScreen());
 }
 
-class NotificationService {
-  static final NotificationService _instance = NotificationService._internal();
-  factory NotificationService() => _instance;
-  NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-  FlutterLocalNotificationsPlugin();
-
-  static const String channelId = 'subway_notification';
-  static const String channelName = '지하철 알림';
-  static const String channelDescription = '지하철 도착 정보 알림';
-
-  Future<void> init() async {
-    const AndroidInitializationSettings initializationSettingsAndroid =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse details) {
-        print('알림이 탭됨: ${details.payload}');
-      },
-    );
-
-    print('알림 서비스 초기화 완료');
-  }
-
-  Future<void> requestPermissions() async {
-    return;
-  }
-
-  Future<void> showTestNotification() async {
-    final AndroidNotificationDetails androidNotificationDetails =
-    AndroidNotificationDetails(
-      channelId,
-      channelName,
-      channelDescription: channelDescription,
-      importance: Importance.high,
-      priority: Priority.high,
-      showWhen: true,
-      enableVibration: true,
-      enableLights: true,
-      icon: '@mipmap/ic_launcher',
-      fullScreenIntent: true,  // 전체 화면 인텐트 추가
-      ticker: '테스트 알123림입니다',
-      color: const Color(0xFFFF0000),
-      visibility: NotificationVisibility.public,
-      category: AndroidNotificationCategory.alarm, // 알람 카테고리로 설정
-    );
-
-    final NotificationDetails platformChannelSpecifics = NotificationDetails(
-      android: androidNotificationDetails,
-    );
-
-    try {
-      await flutterLocalNotificationsPlugin.show(
-        0,
-        '테스트 알림',
-        '지하철 알림 테스트ㄹㅇㄹㄴ입니다!',
-        platformChannelSpecifics,
-        payload: 'test_notification',
-      );
-      print('알림 전송 시도');
-    } catch (e) {
-      print('알림 에러: $e');
-      throw e;
-    }
-  }
-}
 class HomeScreen extends StatefulWidget {
   bool isDarkMode;
   final Function(bool)? toggleDarkMode;
